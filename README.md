@@ -60,7 +60,16 @@ python run_embeddings.py \
     --max_len 1024 --stride 512 \
     --out_root emb_out
 ```
-
+# Subcellular localization: embed all proteins (no pair filtering)
+python run_embeddings.py \
+    --fasta deeploc/deeploc_data.fasta \
+    --all_proteins \
+    --model esm2_t12_35M_UR50D --layers 0-12 \
+    --batch_size 32 --fp32 --device cuda \
+    --num_shards 1 --shard_id 0 \
+    --chunk_size 500 \
+    --out_root deeploc_emb_35M
+	
 The paper uses three models:
 `esm2_t12_35M_UR50D` (layers 0-12), `esm2_t36_3B_UR50D` (layers 0-36), and ProtT5
 (Step 1b). Writes `emb_out/shard_{id}/chunk_{NNNNN}.npz`; merge shards into `train_pooled_by_layer.npz` (and val/test analogues) before Step 2.
@@ -69,10 +78,17 @@ The paper uses three models:
 
 Same mean-pooling and windowing, using the ProtT5 loader instead of `fair-esm`.
 ```bash
-python run_embeddings_prott5.py
-
-
-
+python run_embeddings_prott5.py \
+    --fasta data/sequences.fasta \
+    --train_pos train_pos.txt --train_neg train_neg.txt \
+    --model Rostlab/prot_t5_xl_half_uniref50-enc \
+    --layers 0-24 \
+    --batch_size 1 --device cuda \
+    --num_shards 1 --shard_id 0 \
+    --chunk_size 200 \
+    --max_len 1024 --stride 512 \
+    --out_root emb_out_prott5
+```
 
 
 ### Step 2 — Fit cubic surrogate on train
@@ -146,7 +162,8 @@ Reference jobs are provided.
 
 The PPI pairs are from Bernett et al. (2024); the subcellular localization data is the
 DeepLoc 1.0 benchmark (Almagro Armenteros et al., 2017). Please obtain these datasets
-from their original sources and regenerate embeddings. 
+from their original sources and regenerate embeddings. Place sequences as FASTA and pair lists (`*_pos.txt` / `*_neg.txt`) in the working
+directory, then generate embeddings with Step 1.
 
 ## Citation
 
