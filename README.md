@@ -66,7 +66,7 @@ python embed.py \
     --train_pos train_pos.txt --train_neg train_neg.txt \
     --model esm2_t33_650M_UR50D \
     --layers 0-33 \
-    --batch_size 4 --fp16 --device cuda \
+    --batch_size 4 --fp32 --device cuda \
     --num_shards 2 --shard_id 0 \
     --chunk_size 200 \
     --max_len 1024 --stride 512 \
@@ -137,7 +137,7 @@ Defaults: 1 node, 16 CPUs, 32 GB RAM, 1 hour. Update `--partition`, `--time`, an
 | Window length / stride | 1024 / 512 | `embed.py --max_len`, `--stride` |
 | PCA components `K` | 128 | `fit_cubic_surrogate.py --n_pcs` |
 | Polynomial degree | 3 | `fit_cubic_surrogate.py --degree` |
-| Embedding dtype | fp16 (with `--fp16`) | `embed.py` |
+| Embedding dtype | fp32 (with `--fp32`) | `embed.py` |
 
 ## Citation
 
