@@ -65,7 +65,6 @@ def embed_chunked(
     model_name,
     layers,
     batch_size,
-    use_fp16,
     device,
     chunk_size,
     max_len=1024,
@@ -74,7 +73,7 @@ def embed_chunked(
     import esm
 
     os.makedirs(out_dir, exist_ok=True)
-
+    use_fp16 = False 
     model, alphabet = esm.pretrained.load_model_and_alphabet(model_name)
     model.eval()
     model = model.to(device)
@@ -232,7 +231,7 @@ def main():
     ap.add_argument("--fasta")
     ap.add_argument("--train_pos")
     ap.add_argument("--train_neg")
-
+    ap.add_argument("--all_proteins", action="store_true", help="Embed all proteins in fasta (skip pair filtering)")
     ap.add_argument("--model")
     ap.add_argument("--layers")
     ap.add_argument("--batch_size", type=int, default=1)
@@ -247,12 +246,37 @@ def main():
    
     ap.add_argument("--max_len", type=int, default=1024, help="window length for long sequences")
     ap.add_argument("--stride", type=int, default=512, help="stride for tiling long sequences")
+    
 
     args = ap.parse_args()
 
     layers = parse_layers(args.layers)
+    shard_dir = os.path.join(args.out_root, f"shard_{args.shard_id}")
+    os.makedirs(shard_dir, exist_ok=True)
+
+    # 1. Load FASTA FIRST
+    print("[load] fasta...", flush=True)
+    seqs = read_fasta(args.fasta)
+    print(f"[load] sequences={len(seqs)}", flush=True)
     
-    # Check for missing sequences 
+    if args.all_proteins:
+        train_proteins = sorted(seqs.keys())
+        print(f"[data] all_proteins mode: proteins={len(train_proteins)}", flush=True)
+    else:
+        print("[load] train pairs...", flush=True)
+        pos = read_pairs(args.train_pos)
+        neg = read_pairs(args.train_neg)
+        pairs = [(a, b) for (a, b) in (pos + neg) if a in seqs and b in seqs]
+        train_proteins = sorted({a for a, b in pairs} | {b for a, b in pairs})
+        print(f"[data] pairs_after_filter={len(pairs)} train_proteins={len(train_proteins)}", flush=True)
+    
+    
+    my_proteins = shard_list(train_proteins, args.shard_id, args.num_shards)
+    print(f"[shard] shard_id={args.shard_id}/{args.num_shards} proteins={len(my_proteins)} out_dir={shard_dir}", flush=True)
+    
+    # For PPI
+    
+#     Check for missing sequences 
     missing = [name for name in ("fasta", "train_pos", "train_neg") if getattr(args, name) is None]
     if missing:
         print(f"[warning] {missing} not provided, will skip", flush=True)
@@ -266,7 +290,7 @@ def main():
     pos = read_pairs(args.train_pos)
     neg = read_pairs(args.train_neg)
 
-    # Keep only proteins present in fasta 
+#     Keep only proteins present in fasta 
     pairs = [(a, b) for (a, b) in (pos + neg) if a in seqs and b in seqs]
     train_proteins = sorted({a for a, b in pairs} | {b for a, b in pairs})
 
@@ -283,7 +307,6 @@ def main():
         model_name=args.model,
         layers=layers,
         batch_size=args.batch_size,
-        use_fp16=args.fp16,
         device=args.device,
         chunk_size=args.chunk_size,
         max_len=args.max_len,
