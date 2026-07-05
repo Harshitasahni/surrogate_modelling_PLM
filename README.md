@@ -1,26 +1,25 @@
-# Surrogate Modelling for ESM Embeddings
+# Surrogate Modelling for PLM Embeddings
 
-A polynomial surrogate model in PCA-reduced [ESM](https://github.com/facebookresearch/esm) embedding space for fast, layer-wise pairwise protein prediction. Instead of repeatedly running the full protein language model (PLM), we precompute per-layer mean-pooled embeddings once, project them into a low-dimensional PCA basis fit on the training set, and fit a cubic polynomial.
+A polynomial surrogate model in PCA-reduced protein language model (PLM) embedding
+space for fast, layer-wise protein prediction. Instead of repeatedly running the full
+PLM, we precompute per-layer mean-pooled embeddings once, project them into a
+low-dimensional PCA basis fit on the training set, and fit a per-protein cubic
+polynomial across layers. Any layer can then be reconstructed on demand from a few
+stored coefficients.
 
-- Surrogate fit + evaluation is cheap polynomial algebra in a low-dimensional PCA space, so you can scan across layers and over many pairs without re-running ESM.
-- This makes layer ablations, large-scale screening, and cross-validation tractable on modest hardware.
+- Surrogate fit and reconstruction are cheap polynomial algebra in a low-dimensional
+  PCA space, so you can scan across layers and over many proteins without re-running
+  the PLM.
+- This makes layer ablations, large-scale screening, and cross-validation tractable on
+  modest hardware.
+
+Accompanies the paper *Polynomial Trajectory Compression for Protein Language Model
+Embeddings* (see [Citation](#citation)). The pipeline is evaluated on ESM2-35M,
+ESM2-3B, and ProtT5, across protein–protein interaction (PPI) and subcellular
+localization tasks.
 
 ## Repository structure
 
-```
-surrogate_modelling_PLM/
-├── run_embedding.py                      # Step 1: ESM embedding generation
-├── fit_cubic_surrogate.py                # Step 2: PCA + cubic fit on train
-├── fit_coeffs_given_train_pca.py         # Step 3: project val/test, refit coeffs
-├── eval_val_real_vs_surrogate.py         # Step 4: validation evaluation
-├── eval_test_real_vs_surrogate.py        # Step 5: test evaluation
-├── slurm/
-│   └── cubic_calib.sbatch                # Reference SLURM job for steps 2–4
-├── train_pos.txt / train_neg.txt         # Training pairs
-├── val_pos.txt   / val_neg.txt           # Validation pairs
-├── test_pos.txt  / test_neg.txt          # Test pairs
-└── README.md
-```
 
 ## Installation
 
@@ -28,44 +27,33 @@ surrogate_modelling_PLM/
 git clone https://github.com/Harshitasahni/surrogate_modelling_PLM.git
 cd surrogate_modelling_PLM
 
-conda create -n surrogate-plm python=3.10 -y
+conda env create -f environment.yml
 conda activate surrogate-plm
-
-pip install torch numpy scikit-learn fair-esm
 ```
-
-A GPU is recommended for Step 1; later steps run on CPU.
 
 ## Input formats
 
 **FASTA** — one record per protein:
 
-```
->P12345
+P12345
 MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQ...
-```
 
 **Pair files** — one pair per line, whitespace- or comma-separated, `#` for comments:
-
-```
 P12345  Q67890
 P11111, Q22222
-```
-
-Pairs whose IDs are missing from the FASTA are dropped silently.
 
 ## Usage
 
-### Step 1 — Generate ESM embeddings
+### Step 1a — Generate ESM embeddings
 
 Per-layer, mean-pooled, with sliding-window tiling for long sequences and deterministic sharding for parallel jobs.
 
 ```bash
-python embed.py \
+python run_embeddings.py \
     --fasta data/sequences.fasta \
     --train_pos train_pos.txt --train_neg train_neg.txt \
-    --model esm2_t33_650M_UR50D \
-    --layers 0-33 \
+    --model esm2_t12_35M_UR50D \
+    --layers 0-12 \
     --batch_size 4 --fp32 --device cuda \
     --num_shards 2 --shard_id 0 \
     --chunk_size 200 \
@@ -73,7 +61,19 @@ python embed.py \
     --out_root emb_out
 ```
 
-Writes `emb_out/shard_{id}/chunk_{NNNNN}.npz`. Merge shards into a single `train_pooled_by_layer.npz` (and analogous files for val/test) before Step 2.
+The paper uses three models:
+`esm2_t12_35M_UR50D` (layers 0-12), `esm2_t36_3B_UR50D` (layers 0-36), and ProtT5
+(Step 1b). Writes `emb_out/shard_{id}/chunk_{NNNNN}.npz`; merge shards into `train_pooled_by_layer.npz` (and val/test analogues) before Step 2.
+
+### Step 1b — Generate ProtT5 embeddings
+
+Same mean-pooling and windowing, using the ProtT5 loader instead of `fair-esm`.
+```bash
+python run_embeddings_prott5.py
+
+
+
+
 
 ### Step 2 — Fit cubic surrogate on train
 
@@ -83,8 +83,10 @@ python fit_cubic_surrogate.py \
     --out_npz   cubic_model_train_K128_deg3.npz \
     --n_pcs 128 --degree 3
 ```
+Use `--n_pcs 64` for PPI and `--n_pcs 128` for subcellular localization, matching the paper's configurations.
 
-### Step 3 — Project validation embeddings into the train PCA basis
+
+### Step 3 — Project val/test embeddings into the train PCA basis
 
 ```bash
 python fit_coeffs_given_train_pca.py \
@@ -92,11 +94,12 @@ python fit_coeffs_given_train_pca.py \
     --val_npz     emb_val_out/val_pooled_by_layer.npz \
     --out_npz     cubic_coeffs_val_from_trainPCA_K128_deg3.npz
 ```
+PCA is fit on training embeddings only; val and test are projected through the same basis to prevent leakage.
 
-### Step 4 — Evaluate real vs. surrogate on validation
+### Step 4 — Validation layer scan
 
 ```bash
-python eval_val_real_vs_surrogate.py \
+python select_optimal_layer_using_validation.py \
     --train_npz emb_out/train_pooled_by_layer.npz \
     --val_npz   emb_val_out/val_pooled_by_layer.npz \
     --val_coeffs_npz cubic_coeffs_val_from_trainPCA_K128_deg3.npz \
@@ -104,46 +107,65 @@ python eval_val_real_vs_surrogate.py \
     --val_pos   val_pos.txt   --val_neg   val_neg.txt \
     --mode scan_layers
 ```
+`--mode scan_layers` reports surrogate-vs-real agreement at every layer, used to select the layer reported in the paper (12 for ESM2-35M, 32 for ESM2-3B, 24 for ProtT5).
 
-`--mode scan_layers` reports surrogate-vs-real agreement at every layer.
+### Step 5 — Test evaluation
 
-### Step 5 — (Optional) test set
+**PPI** (real vs. surrogate at the selected layer):
 
-Same shape as Steps 3–4 with test embeddings and pair files (see commented block in `slurm/cubic_calib.sbatch`).
+```bash
+python eval_test_real_vs_surrogate.py \
+    --train_npz emb_out/train_pooled_by_layer.npz \
+    --test_npz  emb_test_out/test_pooled_by_layer.npz \
+    --test_coeffs_npz cubic_coeffs_test_from_trainPCA_K64_deg3.npz \
+    --train_pos train_pos.txt --train_neg train_neg.txt \
+    --test_pos  test_pos.txt  --test_neg  test_neg.txt \
+    --layer 12
+```
+
+**Subcellular localization** (reconstruct surrogate embeddings, then evaluate):
+
+```bash
+python reconstruct_surrogate.py \
+    --coeffs_files cubic_model_train_K128_deg3.npz \
+                   cubic_coeffs_test_from_trainPCA_K128_deg3.npz \
+    --out_npz      deeploc_surrogate_K128_deg3.npz
+
+python eval_localization.py \
+    --embeddings deeploc_surrogate_K128_deg3.npz \
+    --labels     deeploc/labels.csv \
+    --out        results_surrogate_K128_deg3.csv
+```
 
 ## Running on SLURM
 
-Steps 2–4 are wrapped in `slurm/cubic_calib.sbatch`:
+Embedding generation and evaluation must run on a compute node (not the login node).
+Reference jobs are provided.
 
-```bash
-sbatch slurm/cubic_calib.sbatch
-```
+## Data
 
-Defaults: 1 node, 16 CPUs, 32 GB RAM, 1 hour. Update `--partition`, `--time`, and the conda env name for your cluster.
-
-## Key design choices
-
-- **Mean pooling, not CLS.** Per-residue representations are mean-pooled with BOS / EOS / PAD tokens excluded.
-- **Length-weighted window averaging.** Sequences longer than `max_len` are split into overlapping windows; window embeddings are averaged weighted by window length.
-- **Train-only PCA.** PCA is fit on training embeddings; val and test are projected through the same basis to prevent leakage.
-- **Per-layer surrogates.** A separate cubic is fit at each layer, so `scan_layers` can identify the best layer for the task.
-- **OOM-resilient.** Batched short sequences fall back to per-protein retries on CUDA OOM; sequences that still don't fit are logged and skipped.
-
-## Configuration
-
-| Hyperparameter | Default | Where |
-|---|---|---|
-| ESM model | `esm2_t33_650M_UR50D` | `embed.py --model` |
-| Window length / stride | 1024 / 512 | `embed.py --max_len`, `--stride` |
-| PCA components `K` | 128 | `fit_cubic_surrogate.py --n_pcs` |
-| Polynomial degree | 3 | `fit_cubic_surrogate.py --degree` |
-| Embedding dtype | fp32 (with `--fp32`) | `embed.py` |
+The PPI pairs are from Bernett et al. (2024); the subcellular localization data is the
+DeepLoc 1.0 benchmark (Almagro Armenteros et al., 2017). Please obtain these datasets
+from their original sources and regenerate embeddings. 
 
 ## Citation
 
+```bibtex
 
+@article {Sahni2026.06.05.730461,
+	author = {Sahni, Harshita and Chen, Xin and Estrada, Trilce},
+	title = {Polynomial Trajectory Compression for Protein Language Model Embeddings},
+	elocation-id = {2026.06.05.730461},
+	year = {2026},
+	doi = {10.64898/2026.06.05.730461},
+	publisher = {Cold Spring Harbor Laboratory},
+	URL = {https://www.biorxiv.org/content/early/2026/06/07/2026.06.05.730461},
+	eprint = {https://www.biorxiv.org/content/early/2026/06/07/2026.06.05.730461.full.pdf},
+	journal = {bioRxiv}
+}
+```
 
 ## Contact
-Maintainer: Harshita Sahni - hsahni@unm.edu
-Trilce Estrada - trilce@unm.edu
 
+Maintainer: Harshita Sahni — hsahni@unm.edu
+Trilce Estrada — trilce@unm.edu
