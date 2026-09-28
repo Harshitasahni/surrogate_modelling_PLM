@@ -13,10 +13,7 @@ stored coefficients.
 - This makes layer ablations, large-scale screening, and cross-validation tractable on
   modest hardware.
 
-Accompanies the paper *Polynomial Trajectory Compression for Protein Language Model
-Embeddings* (see [Citation](#citation)). The pipeline is evaluated on ESM2-35M,
-ESM2-3B, and ProtT5, across protein–protein interaction (PPI) and subcellular
-localization tasks.
+The pipeline is evaluated on ESM2-35M, ESM2-3B, and ProtT5, across protein–protein interaction (PPI) and subcellular localization tasks.
 
 ## Repository structure
 
