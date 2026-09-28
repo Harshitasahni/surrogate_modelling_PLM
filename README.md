@@ -21,7 +21,7 @@ The pipeline is evaluated on ESM2-35M, ESM2-3B, and ProtT5, across protein–pro
 ## Installation
 
 ```bash
-git clone https://github.com/Harshitasahni/surrogate_modelling_PLM.git
+git clone https://github.com/..
 cd surrogate_modelling_PLM
 
 conda env create -f environment.yml
