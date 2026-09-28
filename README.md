@@ -165,4 +165,17 @@ DeepLoc 1.0 benchmark (Almagro Armenteros et al., 2017). Please obtain these dat
 from their original sources and regenerate embeddings. Place sequences as FASTA and pair lists (`*_pos.txt` / `*_neg.txt`) in the working
 directory, then generate embeddings with Step 1.
 
+## MLP Classifier Details
 
+**MLP probe hyperparameters:** For the nonlinear probe, we used a multi-layer perceptron with ReLU activations, trained with the Adam optimizer and early stopping. For early stopping, 10% of the training data was held out for validation, with a patience of 15 iterations and a maximum of 400 iterations. The architecture, L2 regularization strength, and initial learning rate were selected on the validation set via grid search over hidden-layer configurations. The selected configuration was then fixed and applied identically to the original, PCA-only, and polynomial surrogate embeddings, so that the only difference between conditions was the input representation. The hyperparameter grids and selected configurations are summarized in the table below.
+
+**Table: Selected MLP hyperparameters for the nonlinear probe.** Hyperparameters were selected using validation performance on the original embeddings and then fixed across original, PCA-only, and polynomial surrogate embeddings.
+
+| Task | Model | Selected MLP hyperparameters |
+|------|-------|------------------------------|
+| PPI | ESM2-35M | (256, 128, 32), α = 10⁻³, learning rate 10⁻² |
+| PPI | ESM2-3B | (512, 256), α = 10⁻⁴, learning rate 10⁻³ |
+| PPI | ProtT5 | (512, 256, 64), α = 10⁻⁴, learning rate 10⁻³ |
+| SubLoc | ESM2-35M | (512, 256, 64), α = 10⁻⁴, learning rate 10⁻⁴ |
+| SubLoc | ESM2-3B | (512, 256, 128, 64, 32), α = 10⁻³, learning rate 10⁻² |
+| SubLoc | ProtT5 | (512, 256), α = 10⁻³, learning rate 10⁻⁴ |
