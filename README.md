@@ -36,6 +36,8 @@ P12345
 MKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQ...
 
 **Pair files** — one pair per line, whitespace- or comma-separated, `#` for comments:
+
+
 P12345  Q67890
 P11111, Q22222
 
