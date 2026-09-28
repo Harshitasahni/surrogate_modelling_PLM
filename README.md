@@ -165,24 +165,6 @@ DeepLoc 1.0 benchmark (Almagro Armenteros et al., 2017). Please obtain these dat
 from their original sources and regenerate embeddings. Place sequences as FASTA and pair lists (`*_pos.txt` / `*_neg.txt`) in the working
 directory, then generate embeddings with Step 1.
 
-## Citation
-
-```bibtex
-
-@article {Sahni2026.06.05.730461,
-	author = {Sahni, Harshita and Chen, Xin and Estrada, Trilce},
-	title = {Polynomial Trajectory Compression for Protein Language Model Embeddings},
-	elocation-id = {2026.06.05.730461},
-	year = {2026},
-	doi = {10.64898/2026.06.05.730461},
-	publisher = {Cold Spring Harbor Laboratory},
-	URL = {https://www.biorxiv.org/content/early/2026/06/07/2026.06.05.730461},
-	eprint = {https://www.biorxiv.org/content/early/2026/06/07/2026.06.05.730461.full.pdf},
-	journal = {bioRxiv}
-}
-```
-
-## Contact
 
 Maintainer: Harshita Sahni — hsahni@unm.edu
 Trilce Estrada — trilce@unm.edu
