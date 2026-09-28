@@ -166,5 +166,3 @@ from their original sources and regenerate embeddings. Place sequences as FASTA 
 directory, then generate embeddings with Step 1.
 
 
-Maintainer: Harshita Sahni — hsahni@unm.edu
-Trilce Estrada — trilce@unm.edu
